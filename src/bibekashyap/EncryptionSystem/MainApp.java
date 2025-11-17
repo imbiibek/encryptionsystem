@@ -4,13 +4,12 @@ import javax.crypto.SecretKey;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.awt.event.*;
 import java.io.File;
 import java.awt.datatransfer.DataFlavor;
-import java.awt.dnd.DropTarget;
-import java.awt.dnd.DropTargetDropEvent;
 
-
+/**
+ * MainApp: main UI + integrates existing encryption features and LAN chat
+ */
 public class MainApp extends JFrame {
 
     private JTextField txtSelected;
@@ -28,34 +27,32 @@ public class MainApp extends JFrame {
         } catch (Exception ignored) {}
 
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        
-        // === DRAG & DROP SUPPORT ===
-// === DRAG & DROP SUPPORT (fixed) ===
-new java.awt.dnd.DropTarget(this, new java.awt.dnd.DropTargetAdapter() {
-    @Override
-    public void drop(java.awt.dnd.DropTargetDropEvent dtde) {
-        try {
-            dtde.acceptDrop(dtde.getDropAction());
-            @SuppressWarnings("unchecked")
-            java.util.List<File> droppedFiles =
-                    (java.util.List<File>) dtde.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
-            if (droppedFiles != null && droppedFiles.size() > 0) {
-                File f = droppedFiles.get(0);
-                // update UI on Event Dispatch Thread
-                SwingUtilities.invokeLater(() -> {
-                    selectedFile = f;
-                    txtSelected.setText(f.getAbsolutePath());
-                    updateActionButtons();
-                    JOptionPane.showMessageDialog(MainApp.this, "File selected:\n" + f.getName(), "Drag & Drop", JOptionPane.INFORMATION_MESSAGE);
-                });
-            }
-        } catch (Exception ex) {
-            ex.printStackTrace();
-        }
-    }
-});
 
-        
+        // === DRAG & DROP SUPPORT (fixed) ===
+        new java.awt.dnd.DropTarget(this, new java.awt.dnd.DropTargetAdapter() {
+            @Override
+            public void drop(java.awt.dnd.DropTargetDropEvent dtde) {
+                try {
+                    dtde.acceptDrop(dtde.getDropAction());
+                    @SuppressWarnings("unchecked")
+                    java.util.List<File> droppedFiles =
+                            (java.util.List<File>) dtde.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
+                    if (droppedFiles != null && droppedFiles.size() > 0) {
+                        File f = droppedFiles.get(0);
+                        // update UI on Event Dispatch Thread
+                        SwingUtilities.invokeLater(() -> {
+                            selectedFile = f;
+                            txtSelected.setText(f.getAbsolutePath());
+                            updateActionButtons();
+                            JOptionPane.showMessageDialog(MainApp.this, "File selected:\n" + f.getName(), "Drag & Drop", JOptionPane.INFORMATION_MESSAGE);
+                        });
+                    }
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
+
         setSize(760, 420);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
@@ -138,6 +135,12 @@ new java.awt.dnd.DropTarget(this, new java.awt.dnd.DropTargetAdapter() {
         btnDecrypt.setEnabled(false);
         pAct.add(btnEncrypt);
         pAct.add(btnDecrypt);
+
+        // Chat button
+        JButton btnChat = new JButton("Open LAN Chat");
+        pAct.add(btnChat);
+        btnChat.addActionListener(e -> openChatWindow());
+
         card.add(pAct);
         card.add(Box.createVerticalStrut(16));
 
@@ -314,5 +317,103 @@ new java.awt.dnd.DropTarget(this, new java.awt.dnd.DropTargetAdapter() {
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(MainApp::new);
+    }
+
+    // ===== Chat Window implementation (text + file send/receive) =====
+    private void openChatWindow() {
+        JFrame chatFrame = new JFrame("LAN Chat");
+        chatFrame.setSize(560, 520);
+        chatFrame.setLocationRelativeTo(null);
+
+        JTextArea chatArea = new JTextArea();
+        chatArea.setEditable(false);
+        chatArea.setLineWrap(true);
+
+        JTextField input = new JTextField();
+        JButton sendBtn = new JButton("Send");
+
+        JButton serverBtn = new JButton("Start Server");
+        JButton clientBtn = new JButton("Connect to Server");
+        JButton sendFileBtn = new JButton("Send File");
+
+        ChatServer server = new ChatServer();
+        ChatClient client = new ChatClient();
+
+        JPanel topPanel = new JPanel();
+        topPanel.add(serverBtn);
+        topPanel.add(clientBtn);
+        topPanel.add(sendFileBtn);
+
+        JPanel bottomPanel = new JPanel(new BorderLayout());
+        bottomPanel.add(input, BorderLayout.CENTER);
+        bottomPanel.add(sendBtn, BorderLayout.EAST);
+
+        chatFrame.add(new JScrollPane(chatArea), BorderLayout.CENTER);
+        chatFrame.add(topPanel, BorderLayout.NORTH);
+        chatFrame.add(bottomPanel, BorderLayout.SOUTH);
+
+        // Start server
+        serverBtn.addActionListener(e -> {
+            new Thread(() -> {
+                try {
+                    server.startServer(5000, msg -> SwingUtilities.invokeLater(() -> chatArea.append(msg + "\n")));
+                    SwingUtilities.invokeLater(() -> chatArea.append("Client connected!\n"));
+                } catch (Exception ex) {
+                    SwingUtilities.invokeLater(() -> chatArea.append("Server error: " + ex.getMessage() + "\n"));
+                }
+            }).start();
+        });
+
+        // Connect as client
+        clientBtn.addActionListener(e -> {
+            String ip = JOptionPane.showInputDialog(chatFrame, "Enter server IP address:");
+            if (ip == null || ip.trim().isEmpty()) return;
+            new Thread(() -> {
+                try {
+                    client.connectToServer(ip.trim(), 5000, msg -> SwingUtilities.invokeLater(() -> chatArea.append(msg + "\n")));
+                    SwingUtilities.invokeLater(() -> chatArea.append("Connected to server!\n"));
+                } catch (Exception ex) {
+                    SwingUtilities.invokeLater(() -> chatArea.append("Connection failed: " + ex.getMessage() + "\n"));
+                }
+            }).start();
+        });
+
+        // Send text
+        sendBtn.addActionListener(e -> {
+            String msg = input.getText().trim();
+            if (msg.isEmpty()) return;
+            chatArea.append("Me: " + msg + "\n");
+            // send both (one may be null)
+            server.sendText(msg);
+            client.sendText(msg);
+            input.setText("");
+        });
+
+        // Send file button
+        sendFileBtn.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            int r = chooser.showOpenDialog(chatFrame);
+            if (r != JFileChooser.APPROVE_OPTION) return;
+            File toSend = chooser.getSelectedFile();
+            // send in background
+            new Thread(() -> {
+                try {
+                    // try both, one will throw if not connected
+                    server.sendFile(toSend);
+                } catch (Exception ex1) {
+                    try {
+                        client.sendFile(toSend);
+                    } catch (Exception ex2) {
+                        SwingUtilities.invokeLater(() ->
+                            chatArea.append("File send failed (not connected): " + ex2.getMessage() + "\n"));
+                        return;
+                    }
+                }
+                SwingUtilities.invokeLater(() ->
+                    chatArea.append("Sent file: " + toSend.getName() + "\n"));
+            }).start();
+        });
+
+        chatFrame.setVisible(true);
     }
 }
