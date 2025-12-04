@@ -5,10 +5,12 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.awt.datatransfer.DataFlavor;
 
 /**
- * MainApp: main UI + integrates existing encryption features and LAN chat
+ * MainApp: main UI + integrates AES/XOR encryption, file handling, and LAN chat
  */
 public class MainApp extends JFrame {
 
@@ -19,9 +21,10 @@ public class MainApp extends JFrame {
     private SecretKey currentKey = null;
     private File selectedFile = null;
     private JLabel lblKeyStatus;
+    private JComboBox<String> algoCombo;
 
     public MainApp() {
-        super("EncryptX - File Encrypt/Decrypt (AES)");
+        super("EncryptX - File Encrypt/Decrypt (AES / XOR)");
         try {
             UIManager.setLookAndFeel("javax.swing.plaf.nimbus.NimbusLookAndFeel");
         } catch (Exception ignored) {}
@@ -44,7 +47,8 @@ public class MainApp extends JFrame {
                             selectedFile = f;
                             txtSelected.setText(f.getAbsolutePath());
                             updateActionButtons();
-                            JOptionPane.showMessageDialog(MainApp.this, "File selected:\n" + f.getName(), "Drag & Drop", JOptionPane.INFORMATION_MESSAGE);
+                            JOptionPane.showMessageDialog(MainApp.this, "File selected:\n" + f.getName(),
+                                    "Drag & Drop", JOptionPane.INFORMATION_MESSAGE);
                         });
                     }
                 } catch (Exception ex) {
@@ -53,7 +57,7 @@ public class MainApp extends JFrame {
             }
         });
 
-        setSize(760, 420);
+        setSize(800, 450);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
 
@@ -61,7 +65,7 @@ public class MainApp extends JFrame {
         JPanel header = new JPanel(new BorderLayout());
         header.setBackground(new Color(45,118,232));
         header.setBorder(new EmptyBorder(14, 16, 14, 16));
-        JLabel title = new JLabel("EncryptX - File Encryption Tool");
+        JLabel title = new JLabel("EncryptX - File Encryption Tool (AES / XOR)");
         title.setFont(new Font("SansSerif", Font.BOLD, 18));
         title.setForeground(Color.WHITE);
         header.add(title, BorderLayout.WEST);
@@ -98,8 +102,8 @@ public class MainApp extends JFrame {
         card.add(pRow);
         card.add(Box.createVerticalStrut(12));
 
-        // Key controls
-        JLabel lblKey = new JLabel("2) Key (Generate / Save / Load):");
+        // Key controls (for AES only)
+        JLabel lblKey = new JLabel("2) AES Key (Generate / Save / Load):");
         lblKey.setAlignmentX(Component.LEFT_ALIGNMENT);
         card.add(lblKey);
         card.add(Box.createVerticalStrut(8));
@@ -116,13 +120,28 @@ public class MainApp extends JFrame {
         card.add(pKey);
         card.add(Box.createVerticalStrut(8));
 
-        lblKeyStatus = new JLabel("No key loaded");
+        lblKeyStatus = new JLabel("No key loaded (required only for AES)");
         lblKeyStatus.setForeground(Color.DARK_GRAY);
         card.add(lblKeyStatus);
         card.add(Box.createVerticalStrut(12));
 
+        // Algorithm selection
+        JLabel lblAlgo = new JLabel("3) Select Algorithm:");
+        lblAlgo.setAlignmentX(Component.LEFT_ALIGNMENT);
+        card.add(lblAlgo);
+        card.add(Box.createVerticalStrut(8));
+
+        algoCombo = new JComboBox<>(new String[] {
+                "AES (Java Crypto)",
+                "XOR (Manual Simple)"
+        });
+        algoCombo.setMaximumSize(new Dimension(300, 30));
+        algoCombo.addActionListener(e -> updateActionButtons());
+        card.add(algoCombo);
+        card.add(Box.createVerticalStrut(16));
+
         // Encrypt / Decrypt buttons
-        JLabel lblAct = new JLabel("3) Action:");
+        JLabel lblAct = new JLabel("4) Action:");
         lblAct.setAlignmentX(Component.LEFT_ALIGNMENT);
         card.add(lblAct);
         card.add(Box.createVerticalStrut(8));
@@ -167,6 +186,10 @@ public class MainApp extends JFrame {
         setVisible(true);
     }
 
+    private boolean isAESSelected() {
+        return algoCombo == null || algoCombo.getSelectedIndex() == 0;
+    }
+
     private void onBrowse() {
         int res = fileChooser.showOpenDialog(this);
         if (res == JFileChooser.APPROVE_OPTION) {
@@ -179,13 +202,14 @@ public class MainApp extends JFrame {
     private void onGenerateKey() {
         try {
             currentKey = CryptoUtils.generateKey();
-            lblKeyStatus.setText("Key generated (not saved)");
+            lblKeyStatus.setText("AES key generated (you can save it for reuse)");
             btnSaveKey.setEnabled(true);
             updateActionButtons();
             JOptionPane.showMessageDialog(this, "New AES key generated.", "Key", JOptionPane.INFORMATION_MESSAGE);
         } catch (Exception ex) {
             ex.printStackTrace();
-            JOptionPane.showMessageDialog(this, "Failed to generate key: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Failed to generate key: " + ex.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
@@ -198,10 +222,12 @@ public class MainApp extends JFrame {
             File out = saver.getSelectedFile();
             try {
                 CryptoUtils.saveKeyToFile(currentKey, out);
-                JOptionPane.showMessageDialog(this, "Key saved to: " + out.getAbsolutePath(), "Saved", JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Key saved to: " + out.getAbsolutePath(),
+                        "Saved", JOptionPane.INFORMATION_MESSAGE);
             } catch (Exception ex) {
                 ex.printStackTrace();
-                JOptionPane.showMessageDialog(this, "Failed to save key: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Failed to save key: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
@@ -220,8 +246,32 @@ public class MainApp extends JFrame {
                 JOptionPane.showMessageDialog(this, "Key loaded.", "Loaded", JOptionPane.INFORMATION_MESSAGE);
             } catch (Exception ex) {
                 ex.printStackTrace();
-                JOptionPane.showMessageDialog(this, "Failed to load key: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Failed to load key: " + ex.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
             }
+        }
+    }
+
+    private Integer askXorKey() {
+        String input = JOptionPane.showInputDialog(
+                this,
+                "Enter numeric XOR key (0–255):",
+                "Manual XOR Key",
+                JOptionPane.QUESTION_MESSAGE
+        );
+        if (input == null) return null; // cancelled
+        try {
+            int k = Integer.parseInt(input.trim());
+            if (k < 0 || k > 255) {
+                JOptionPane.showMessageDialog(this, "Key must be between 0 and 255.",
+                        "Invalid key", JOptionPane.ERROR_MESSAGE);
+                return null;
+            }
+            return k;
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(this, "Please enter a valid number.",
+                    "Invalid input", JOptionPane.ERROR_MESSAGE);
+            return null;
         }
     }
 
@@ -235,13 +285,49 @@ public class MainApp extends JFrame {
         if (r != JFileChooser.APPROVE_OPTION) return;
         File out = saver.getSelectedFile();
 
+        boolean useAES = isAESSelected();
+        Integer xorKey = null;
+        if (!useAES) {
+            xorKey = askXorKey();
+            if (xorKey == null) return; // user cancelled or invalid
+        }
+        final Integer finalXorKey = xorKey;
+
         // do encryption in background
         new SwingWorker<Void, Integer>() {
             @Override
             protected Void doInBackground() throws Exception {
                 setUIEnabled(false);
                 progressBar.setValue(0);
-                CryptoUtils.encryptFile(selectedFile, out, currentKey, percent -> setProgress(percent));
+
+                if (useAES) {
+                    CryptoUtils.encryptFile(selectedFile, out, currentKey,
+                            percent -> setProgress(percent));
+                } else {
+                    // Manual XOR-based encryption (same for encrypt/decrypt)
+                    long total = selectedFile.length();
+                    long read = 0;
+                    byte[] buffer = new byte[8192];
+
+                    try (FileInputStream fis = new FileInputStream(selectedFile);
+                         FileOutputStream fos = new FileOutputStream(out)) {
+
+                        int n;
+                        while ((n = fis.read(buffer)) != -1) {
+                            for (int i = 0; i < n; i++) {
+                                buffer[i] = (byte) (buffer[i] ^ finalXorKey);
+                            }
+                            fos.write(buffer, 0, n);
+                            read += n;
+                            if (total > 0) {
+                                int p = (int) ((read * 100) / total);
+                                setProgress(Math.min(p, 100));
+                            }
+                        }
+                        fos.flush();
+                    }
+                }
+
                 return null;
             }
 
@@ -249,7 +335,9 @@ public class MainApp extends JFrame {
             protected void done() {
                 setUIEnabled(true);
                 progressBar.setValue(100);
-                JOptionPane.showMessageDialog(MainApp.this, "Encryption completed:\n" + out.getAbsolutePath(), "Done", JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(MainApp.this,
+                        "Encryption completed:\n" + out.getAbsolutePath(),
+                        "Done", JOptionPane.INFORMATION_MESSAGE);
             }
         }.execute();
     }
@@ -264,12 +352,48 @@ public class MainApp extends JFrame {
         if (r != JFileChooser.APPROVE_OPTION) return;
         File out = saver.getSelectedFile();
 
+        boolean useAES = isAESSelected();
+        Integer xorKey = null;
+        if (!useAES) {
+            xorKey = askXorKey();
+            if (xorKey == null) return;
+        }
+        final Integer finalXorKey = xorKey;
+
         new SwingWorker<Void, Integer>() {
             @Override
             protected Void doInBackground() throws Exception {
                 setUIEnabled(false);
                 progressBar.setValue(0);
-                CryptoUtils.decryptFile(selectedFile, out, currentKey, percent -> setProgress(percent));
+
+                if (useAES) {
+                    CryptoUtils.decryptFile(selectedFile, out, currentKey,
+                            percent -> setProgress(percent));
+                } else {
+                    // Manual XOR "decryption" (same operation)
+                    long total = selectedFile.length();
+                    long read = 0;
+                    byte[] buffer = new byte[8192];
+
+                    try (FileInputStream fis = new FileInputStream(selectedFile);
+                         FileOutputStream fos = new FileOutputStream(out)) {
+
+                        int n;
+                        while ((n = fis.read(buffer)) != -1) {
+                            for (int i = 0; i < n; i++) {
+                                buffer[i] = (byte) (buffer[i] ^ finalXorKey);
+                            }
+                            fos.write(buffer, 0, n);
+                            read += n;
+                            if (total > 0) {
+                                int p = (int) ((read * 100) / total);
+                                setProgress(Math.min(p, 100));
+                            }
+                        }
+                        fos.flush();
+                    }
+                }
+
                 return null;
             }
 
@@ -277,18 +401,22 @@ public class MainApp extends JFrame {
             protected void done() {
                 setUIEnabled(true);
                 progressBar.setValue(100);
-                JOptionPane.showMessageDialog(MainApp.this, "Decryption completed:\n" + out.getAbsolutePath(), "Done", JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(MainApp.this,
+                        "Decryption completed:\n" + out.getAbsolutePath(),
+                        "Done", JOptionPane.INFORMATION_MESSAGE);
             }
         }.execute();
     }
 
     private boolean checkReady() {
         if (selectedFile == null) {
-            JOptionPane.showMessageDialog(this, "Please choose a file first.", "No file", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Please choose a file first.",
+                    "No file", JOptionPane.WARNING_MESSAGE);
             return false;
         }
-        if (currentKey == null) {
-            JOptionPane.showMessageDialog(this, "Please generate or load a key first.", "No key", JOptionPane.WARNING_MESSAGE);
+        if (isAESSelected() && currentKey == null) {
+            JOptionPane.showMessageDialog(this, "For AES, please generate or load a key first.",
+                    "No AES key", JOptionPane.WARNING_MESSAGE);
             return false;
         }
         return true;
@@ -297,17 +425,42 @@ public class MainApp extends JFrame {
     private void updateActionButtons() {
         boolean hasFile = selectedFile != null;
         boolean hasKey = currentKey != null;
-        btnEncrypt.setEnabled(hasFile && hasKey);
-        btnDecrypt.setEnabled(hasFile && hasKey);
+        if (isAESSelected()) {
+            btnEncrypt.setEnabled(hasFile && hasKey);
+            btnDecrypt.setEnabled(hasFile && hasKey);
+            btnGenKey.setEnabled(true);
+            btnLoadKey.setEnabled(true);
+            btnSaveKey.setEnabled(hasKey);
+            lblKeyStatus.setText(hasKey
+                    ? "AES key loaded/generated (required for AES)"
+                    : "No AES key loaded (generate or load for AES)");
+        } else {
+            // XOR mode: only file required, key is entered at runtime
+            btnEncrypt.setEnabled(hasFile);
+            btnDecrypt.setEnabled(hasFile);
+            btnGenKey.setEnabled(false);
+            btnLoadKey.setEnabled(false);
+            btnSaveKey.setEnabled(false);
+            lblKeyStatus.setText("AES key not needed in XOR mode (key entered at runtime).");
+        }
     }
 
     private void setUIEnabled(boolean enabled) {
         btnBrowse.setEnabled(enabled);
-        btnGenKey.setEnabled(enabled);
-        btnSaveKey.setEnabled(enabled && currentKey != null);
-        btnLoadKey.setEnabled(enabled);
-        btnEncrypt.setEnabled(enabled && selectedFile != null && currentKey != null);
-        btnDecrypt.setEnabled(enabled && selectedFile != null && currentKey != null);
+        if (isAESSelected()) {
+            btnGenKey.setEnabled(enabled);
+            btnLoadKey.setEnabled(enabled);
+            btnSaveKey.setEnabled(enabled && currentKey != null);
+        } else {
+            btnGenKey.setEnabled(false);
+            btnLoadKey.setEnabled(false);
+            btnSaveKey.setEnabled(false);
+        }
+        btnEncrypt.setEnabled(enabled && selectedFile != null &&
+                (!isAESSelected() || (isAESSelected() && currentKey != null)));
+        btnDecrypt.setEnabled(enabled && selectedFile != null &&
+                (!isAESSelected() || (isAESSelected() && currentKey != null)));
+        algoCombo.setEnabled(enabled);
     }
 
     // update Swing progress safely
@@ -356,10 +509,12 @@ public class MainApp extends JFrame {
         serverBtn.addActionListener(e -> {
             new Thread(() -> {
                 try {
-                    server.startServer(5000, msg -> SwingUtilities.invokeLater(() -> chatArea.append(msg + "\n")));
+                    server.startServer(5000,
+                            msg -> SwingUtilities.invokeLater(() -> chatArea.append(msg + "\n")));
                     SwingUtilities.invokeLater(() -> chatArea.append("Client connected!\n"));
                 } catch (Exception ex) {
-                    SwingUtilities.invokeLater(() -> chatArea.append("Server error: " + ex.getMessage() + "\n"));
+                    SwingUtilities.invokeLater(() ->
+                            chatArea.append("Server error: " + ex.getMessage() + "\n"));
                 }
             }).start();
         });
@@ -370,10 +525,12 @@ public class MainApp extends JFrame {
             if (ip == null || ip.trim().isEmpty()) return;
             new Thread(() -> {
                 try {
-                    client.connectToServer(ip.trim(), 5000, msg -> SwingUtilities.invokeLater(() -> chatArea.append(msg + "\n")));
+                    client.connectToServer(ip.trim(), 5000,
+                            msg -> SwingUtilities.invokeLater(() -> chatArea.append(msg + "\n")));
                     SwingUtilities.invokeLater(() -> chatArea.append("Connected to server!\n"));
                 } catch (Exception ex) {
-                    SwingUtilities.invokeLater(() -> chatArea.append("Connection failed: " + ex.getMessage() + "\n"));
+                    SwingUtilities.invokeLater(() ->
+                            chatArea.append("Connection failed: " + ex.getMessage() + "\n"));
                 }
             }).start();
         });
@@ -405,12 +562,12 @@ public class MainApp extends JFrame {
                         client.sendFile(toSend);
                     } catch (Exception ex2) {
                         SwingUtilities.invokeLater(() ->
-                            chatArea.append("File send failed (not connected): " + ex2.getMessage() + "\n"));
+                                chatArea.append("File send failed (not connected): " + ex2.getMessage() + "\n"));
                         return;
                     }
                 }
                 SwingUtilities.invokeLater(() ->
-                    chatArea.append("Sent file: " + toSend.getName() + "\n"));
+                        chatArea.append("Sent file: " + toSend.getName() + "\n"));
             }).start();
         });
 

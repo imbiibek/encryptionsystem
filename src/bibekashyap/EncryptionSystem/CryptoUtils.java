@@ -5,20 +5,17 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
 import java.security.SecureRandom;
-import java.security.Key;
 import java.nio.file.Files;
-import javax.crypto.spec.PBEKeySpec;
-import javax.crypto.SecretKeyFactory;
-import java.security.SecureRandom;
-
 
 public class CryptoUtils {
 
     // AES/CBC/PKCS5Padding with 128-bit key
     private static final String CIPHER_ALGO = "AES/CBC/PKCS5Padding";
     private static final int AES_KEY_SIZE = 128; // bits
-    private static final int IV_SIZE = 16; // bytes
+    private static final int IV_SIZE = 16;       // bytes
     private static final int BUFFER_SIZE = 8192;
+
+    // ===================== AES SECTION (Java library) =====================
 
     // Generate a new AES key
     public static SecretKey generateKey() throws Exception {
@@ -27,7 +24,7 @@ public class CryptoUtils {
         return kg.generateKey();
     }
 
-    // Save raw key bytes to a file (not encrypted). For real apps protect this!
+    // Save raw key bytes to a file (not encrypted). 
     public static void saveKeyToFile(SecretKey key, File outFile) throws IOException {
         byte[] keyBytes = key.getEncoded();
         try (FileOutputStream fos = new FileOutputStream(outFile)) {
@@ -43,7 +40,8 @@ public class CryptoUtils {
 
     // Encrypt file: write IV as first 16 bytes, then cipher bytes
     // progressCallback receives value 0..100
-    public static void encryptFile(File input, File output, SecretKey key, ProgressCallback progressCallback) throws Exception {
+    public static void encryptFile(File input, File output, SecretKey key,
+                                   ProgressCallback progressCallback) throws Exception {
         Cipher cipher = Cipher.getInstance(CIPHER_ALGO);
         byte[] iv = new byte[IV_SIZE];
         SecureRandom rnd = new SecureRandom();
@@ -66,7 +64,7 @@ public class CryptoUtils {
             while ((n = fis.read(buffer)) != -1) {
                 cos.write(buffer, 0, n);
                 read += n;
-                if (progressCallback != null) {
+                if (progressCallback != null && total > 0) {
                     int p = (int)((read * 100) / total);
                     progressCallback.onProgress(Math.min(p, 100));
                 }
@@ -76,7 +74,8 @@ public class CryptoUtils {
     }
 
     // Decrypt file: reads IV first
-    public static void decryptFile(File input, File output, SecretKey key, ProgressCallback progressCallback) throws Exception {
+    public static void decryptFile(File input, File output, SecretKey key,
+                                   ProgressCallback progressCallback) throws Exception {
         try (FileInputStream fis = new FileInputStream(input)) {
             // read IV
             byte[] iv = new byte[IV_SIZE];
@@ -108,7 +107,48 @@ public class CryptoUtils {
         }
     }
 
-    // Small callback interface for progress updates
+    // ===================== MANUAL XOR SECTION (no crypto lib) =====================
+    
+    // hard-coded XOR file algorithm (no crypto library)
+    
+    public static void xorEncryptFile(File input, File output, int key,
+                                      ProgressCallback progressCallback) throws IOException {
+        xorTransformFile(input, output, key, progressCallback);
+    }
+
+    public static void xorDecryptFile(File input, File output, int key,
+                                      ProgressCallback progressCallback) throws IOException {
+        xorTransformFile(input, output, key, progressCallback);
+    }
+
+    // Core XOR transform: read bytes, XOR with key, write out.
+    private static void xorTransformFile(File input, File output, int key,
+                                         ProgressCallback progressCallback) throws IOException {
+        try (FileInputStream fis = new FileInputStream(input);
+             FileOutputStream fos = new FileOutputStream(output)) {
+
+            long total = input.length();
+            long read = 0;
+            byte[] buffer = new byte[BUFFER_SIZE];
+            int n;
+            while ((n = fis.read(buffer)) != -1) {
+                // manual XOR on each byte
+                for (int i = 0; i < n; i++) {
+                    int unsigned = buffer[i] & 0xFF;
+                    buffer[i] = (byte)(unsigned ^ key);
+                }
+                fos.write(buffer, 0, n);
+                read += n;
+                if (progressCallback != null && total > 0) {
+                    int p = (int)((read * 100) / total);
+                    progressCallback.onProgress(Math.min(p, 100));
+                }
+            }
+            fos.flush();
+        }
+    }
+
+    // PROGRESS CALLBACK 
     public interface ProgressCallback {
         void onProgress(int percent);
     }
